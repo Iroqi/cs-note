@@ -5,7 +5,7 @@
 - [x] [Markdown语法](#Markdown基本语法)
 - [x] [git使用](#git的使用)
 - [x] [vim](#vim)
-- [x] [Linux指令](# linux指令)
+- [x] [Linux指令](#linux指令)
 - [ ] MySQL PHP 及服务器的使用   
 - [ ] workflow n8n   
 - [ ] web3
