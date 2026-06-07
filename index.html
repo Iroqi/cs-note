@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>太阳系 3D 模拟</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(7, 15, 32, 0.72);
+      --panel-border: rgba(148, 163, 184, 0.22);
+      --text: #e5eefb;
+      --muted: #9fb0c6;
+      --accent: #60a5fa;
+      --accent-2: #fbbf24;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 48%, #1f2d54 0%, #081225 32%, #020617 78%);
+      color: var(--text);
+      font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    canvas:active { cursor: grabbing; }
+
+    .hud,
+    .controls,
+    .legend {
+      position: fixed;
+      z-index: 2;
+      border: 1px solid var(--panel-border);
+      background: var(--panel);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .hud {
+      top: 20px;
+      left: 20px;
+      max-width: min(430px, calc(100vw - 40px));
+      padding: 20px 22px;
+      border-radius: 24px;
+    }
+
+    .hud h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.7rem, 4vw, 3rem);
+      letter-spacing: -0.06em;
+      line-height: 1;
+    }
+
+    .hud p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 0.96rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      color: #fde68a;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .badge::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-2);
+      box-shadow: 0 0 18px 6px rgba(251, 191, 36, 0.5);
+    }
+
+    .controls {
+      right: 20px;
+      top: 20px;
+      width: min(360px, calc(100vw - 40px));
+      padding: 18px;
+      border-radius: 22px;
+    }
+
+    .control-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin: 0 0 16px;
+    }
+
+    .control-row:last-child { margin-bottom: 0; }
+
+    label {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    output {
+      min-width: 56px;
+      text-align: right;
+      color: #bfdbfe;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+
+    input[type="range"] {
+      grid-column: 1 / -1;
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      color: #06101f;
+      background: linear-gradient(135deg, #93c5fd, #fef08a);
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 0.2s ease, filter 0.2s ease;
+    }
+
+    button:hover { transform: translateY(-1px); filter: brightness(1.06); }
+
+    .legend {
+      left: 20px;
+      bottom: 20px;
+      max-width: min(520px, calc(100vw - 40px));
+      padding: 14px;
+      border-radius: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+    }
+
+    .planet-key {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .planet-key i {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .hint {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 2;
+      max-width: min(340px, calc(100vw - 40px));
+      color: rgba(226, 232, 240, 0.72);
+      font-size: 0.82rem;
+      line-height: 1.6;
+      text-align: right;
+      text-shadow: 0 2px 10px #000;
+    }
+
+    @media (max-width: 820px) {
+      .controls {
+        top: auto;
+        right: 12px;
+        bottom: 12px;
+        width: calc(100vw - 24px);
+      }
+
+      .hud { top: 12px; left: 12px; max-width: calc(100vw - 24px); }
+      .legend, .hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="space" aria-label="太阳系 3D 轨道模拟画布"></canvas>
+
+  <section class="hud" aria-labelledby="title">
+    <div class="badge">Interactive Orrery</div>
+    <h1 id="title">太阳系 3D 模拟</h1>
+    <p>拖动画布旋转视角，滚轮缩放距离。行星公转速率按真实公转周期相对地球换算，轨道与行星大小为便于观察经过压缩和放大。</p>
+  </section>
+
+  <aside class="controls" aria-label="模拟控制">
+    <div class="control-row">
+      <label for="speed">公转速度</label>
+      <output id="speedValue" for="speed">1.0×</output>
+      <input id="speed" type="range" min="0" max="4" step="0.1" value="1" />
+    </div>
+    <div class="control-row">
+      <label for="tilt">视角倾斜</label>
+      <output id="tiltValue" for="tilt">52°</output>
+      <input id="tilt" type="range" min="15" max="78" step="1" value="52" />
+    </div>
+    <div class="control-row">
+      <button id="pause" type="button">暂停模拟</button>
+      <button id="reset" type="button">重置视角</button>
+    </div>
+  </aside>
+
+  <div class="legend" id="legend" aria-label="行星图例"></div>
+  <p class="hint">提示：火星与木星之间的碎石环表示小行星带；越靠近太阳的天体因为公转周期更短而移动更快。</p>
+
+  <script>
+    const canvas = document.querySelector('#space');
+    const ctx = canvas.getContext('2d');
+    const speedInput = document.querySelector('#speed');
+    const speedValue = document.querySelector('#speedValue');
+    const tiltInput = document.querySelector('#tilt');
+    const tiltValue = document.querySelector('#tiltValue');
+    const pauseButton = document.querySelector('#pause');
+    const resetButton = document.querySelector('#reset');
+    const legend = document.querySelector('#legend');
+
+    const TAU = Math.PI * 2;
+    const EARTH_ORBITAL_PERIOD_DAYS = 365.256;
+    const EARTH_ORBIT_RADIUS = 126;
+
+    function orbitalSpeedFromPeriod(periodDays) {
+      return EARTH_ORBITAL_PERIOD_DAYS / periodDays;
+    }
+
+    function orbitalSpeedFromAu(au) {
+      return 1 / Math.sqrt(au ** 3);
+    }
+
+    const planets = [
+      { name: '水星', color: '#cbd5e1', radius: 3.4, orbit: 62, periodDays: 87.969, phase: 0.2, incline: 0.04 },
+      { name: '金星', color: '#fbbf24', radius: 6.3, orbit: 92, periodDays: 224.701, phase: 1.7, incline: 0.02 },
+      { name: '地球', color: '#38bdf8', radius: 6.6, orbit: EARTH_ORBIT_RADIUS, periodDays: EARTH_ORBITAL_PERIOD_DAYS, phase: 3.0, incline: 0.00, moon: true },
+      { name: '火星', color: '#fb7185', radius: 4.8, orbit: 165, periodDays: 686.980, phase: 4.5, incline: 0.03 },
+      { name: '木星', color: '#f8c983', radius: 13.5, orbit: 225, periodDays: 4332.589, phase: 0.9, incline: 0.01 },
+      { name: '土星', color: '#fde68a', radius: 12.2, orbit: 287, periodDays: 10759.22, phase: 2.3, incline: 0.02, ring: true },
+      { name: '天王星', color: '#67e8f9', radius: 9.2, orbit: 345, periodDays: 30688.5, phase: 5.1, incline: 0.05 },
+      { name: '海王星', color: '#818cf8', radius: 8.8, orbit: 402, periodDays: 60182, phase: 3.8, incline: 0.03 },
+    ].map((planet) => ({
+      ...planet,
+      speed: orbitalSpeedFromPeriod(planet.periodDays),
+    }));
+
+    const asteroidBelt = Array.from({ length: 720 }, (_, index) => {
+      const au = 2.15 + Math.random() * 1.15;
+      const orbit = EARTH_ORBIT_RADIUS * (1.48 + (au - 2.15) / 1.15 * 0.24) + (Math.random() - 0.5) * 9;
+      return {
+        angle: Math.random() * TAU,
+        orbit,
+        speed: orbitalSpeedFromAu(au),
+        size: Math.random() * 1.35 + 0.35,
+        alpha: Math.random() * 0.48 + 0.24,
+        incline: (Math.random() - 0.5) * 0.075,
+        wobble: Math.random() * TAU,
+        color: index % 9 === 0 ? '#fbbf24' : '#cbd5e1',
+      };
+    });
+
+    const stars = Array.from({ length: 560 }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      size: Math.random() * 1.8 + 0.3,
+      alpha: Math.random() * 0.65 + 0.25,
+    }));
+
+    let width = 0;
+    let height = 0;
+    let pixelRatio = 1;
+    let time = 0;
+    let last = performance.now();
+    let paused = false;
+    let yaw = -0.42;
+    let pitch = Number(tiltInput.value) * Math.PI / 180;
+    let zoom = 1;
+    let dragging = false;
+    let dragStart = { x: 0, y: 0, yaw: 0, pitch: 0 };
+
+    function resize() {
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    }
+
+    function project(point) {
+      const cy = Math.cos(yaw);
+      const sy = Math.sin(yaw);
+      const cp = Math.cos(pitch);
+      const sp = Math.sin(pitch);
+      const x1 = point.x * cy - point.z * sy;
+      const z1 = point.x * sy + point.z * cy;
+      const y1 = point.y * cp - z1 * sp;
+      const z2 = point.y * sp + z1 * cp;
+      const depth = 820 / (820 + z2 * zoom);
+      return {
+        x: width / 2 + x1 * depth * zoom,
+        y: height / 2 + y1 * depth * zoom,
+        scale: depth,
+        depth: z2,
+      };
+    }
+
+    function drawStars() {
+      ctx.save();
+      for (const star of stars) {
+        const drift = Math.sin(time * 0.2 + star.x * 14) * 0.12;
+        ctx.fillStyle = `rgba(226, 232, 240, ${star.alpha + drift})`;
+        ctx.beginPath();
+        ctx.arc(star.x * width, star.y * height, star.size, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawOrbit(planet) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= 220; i++) {
+        const angle = i / 220 * TAU;
+        const p = project({
+          x: Math.cos(angle) * planet.orbit,
+          y: Math.sin(angle) * planet.orbit * planet.incline * 0.55,
+          z: Math.sin(angle) * planet.orbit,
+        });
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function planetPosition(planet) {
+      const angle = time * planet.speed + planet.phase;
+      return {
+        angle,
+        x: Math.cos(angle) * planet.orbit,
+        y: Math.sin(angle) * planet.orbit * planet.incline * 0.55,
+        z: Math.sin(angle) * planet.orbit,
+      };
+    }
+
+    function drawAsteroidBelt() {
+      ctx.save();
+      ctx.fillStyle = 'rgba(203, 213, 225, 0.62)';
+      for (const asteroid of asteroidBelt) {
+        const angle = asteroid.angle + time * asteroid.speed;
+        const screen = project({
+          x: Math.cos(angle) * asteroid.orbit,
+          y: Math.sin(angle + asteroid.wobble) * asteroid.orbit * asteroid.incline,
+          z: Math.sin(angle) * asteroid.orbit,
+        });
+        const radius = Math.max(0.45, asteroid.size * screen.scale * zoom);
+        ctx.globalAlpha = asteroid.alpha * Math.min(1.2, screen.scale);
+        ctx.fillStyle = asteroid.color;
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, radius, 0, TAU);
+        ctx.fill();
+      }
+
+      const label = project({ x: 0, y: -7, z: EARTH_ORBIT_RADIUS * 1.64 });
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(226, 232, 240, 0.72)';
+      ctx.font = '600 12px Inter, sans-serif';
+      ctx.fillText('小行星带', label.x + 8, label.y);
+      ctx.restore();
+    }
+
+    function drawSphere(item, screen, radius) {
+      const gradient = ctx.createRadialGradient(
+        screen.x - radius * 0.38,
+        screen.y - radius * 0.45,
+        radius * 0.15,
+        screen.x,
+        screen.y,
+        radius
+      );
+      gradient.addColorStop(0, '#ffffff');
+      gradient.addColorStop(0.16, item.color);
+      gradient.addColorStop(1, '#0f172a');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(screen.x, screen.y, radius, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.stroke();
+    }
+
+    function drawLabel(item, screen, radius) {
+      ctx.save();
+      ctx.font = '600 12px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(226, 232, 240, 0.9)';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 8;
+      ctx.fillText(item.name, screen.x + radius + 7, screen.y - radius - 4);
+      ctx.restore();
+    }
+
+    function drawSun() {
+      const sun = project({ x: 0, y: 0, z: 0 });
+      const radius = 30 * sun.scale * zoom;
+      const glow = ctx.createRadialGradient(sun.x, sun.y, 0, sun.x, sun.y, radius * 4.5);
+      glow.addColorStop(0, 'rgba(254, 240, 138, 0.95)');
+      glow.addColorStop(0.22, 'rgba(251, 146, 60, 0.45)');
+      glow.addColorStop(1, 'rgba(251, 146, 60, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sun.x, sun.y, radius * 4.5, 0, TAU);
+      ctx.fill();
+
+      drawSphere({ color: '#facc15' }, sun, radius);
+      ctx.save();
+      ctx.fillStyle = '#fff7ad';
+      ctx.font = '800 13px Inter, sans-serif';
+      ctx.fillText('太阳', sun.x + radius + 8, sun.y - radius - 6);
+      ctx.restore();
+    }
+
+    function drawSaturnRing(screen, radius) {
+      ctx.save();
+      ctx.translate(screen.x, screen.y);
+      ctx.rotate(-0.28 + yaw * 0.25);
+      ctx.strokeStyle = 'rgba(253, 230, 138, 0.62)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radius * 1.9, radius * 0.58, 0, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.42)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radius * 2.35, radius * 0.72, 0, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawMoon(earth, earthScreen) {
+      const moonAngle = time * 8.4;
+      const local = {
+        x: earth.x + Math.cos(moonAngle) * 18,
+        y: earth.y + Math.sin(moonAngle) * 4,
+        z: earth.z + Math.sin(moonAngle) * 18,
+      };
+      const moon = project(local);
+      ctx.strokeStyle = 'rgba(203, 213, 225, 0.25)';
+      ctx.beginPath();
+      ctx.moveTo(earthScreen.x, earthScreen.y);
+      ctx.lineTo(moon.x, moon.y);
+      ctx.stroke();
+      ctx.fillStyle = '#e2e8f0';
+      ctx.beginPath();
+      ctx.arc(moon.x, moon.y, Math.max(1.8, 2.6 * moon.scale * zoom), 0, TAU);
+      ctx.fill();
+    }
+
+    function drawScene(now) {
+      const delta = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      if (!paused) time += delta * Number(speedInput.value) * 0.62;
+
+      ctx.clearRect(0, 0, width, height);
+      drawStars();
+      planets.forEach(drawOrbit);
+      drawAsteroidBelt();
+      drawSun();
+
+      const renderList = planets.map((planet) => {
+        const position = planetPosition(planet);
+        return { planet, position, screen: project(position) };
+      }).sort((a, b) => b.screen.depth - a.screen.depth);
+
+      for (const item of renderList) {
+        const radius = Math.max(2.4, item.planet.radius * item.screen.scale * zoom);
+        if (item.planet.ring) drawSaturnRing(item.screen, radius);
+        drawSphere(item.planet, item.screen, radius);
+        if (item.planet.moon) drawMoon(item.position, item.screen);
+        drawLabel(item.planet, item.screen, radius);
+      }
+
+      requestAnimationFrame(drawScene);
+    }
+
+    function updateTiltLabel() {
+      tiltValue.textContent = `${tiltInput.value}°`;
+    }
+
+    function resetView() {
+      yaw = -0.42;
+      zoom = 1;
+      tiltInput.value = 52;
+      pitch = 52 * Math.PI / 180;
+      updateTiltLabel();
+    }
+
+    speedInput.addEventListener('input', () => {
+      speedValue.textContent = `${Number(speedInput.value).toFixed(1)}×`;
+    });
+
+    tiltInput.addEventListener('input', () => {
+      pitch = Number(tiltInput.value) * Math.PI / 180;
+      updateTiltLabel();
+    });
+
+    pauseButton.addEventListener('click', () => {
+      paused = !paused;
+      pauseButton.textContent = paused ? '继续模拟' : '暂停模拟';
+    });
+
+    resetButton.addEventListener('click', resetView);
+
+    canvas.addEventListener('pointerdown', (event) => {
+      dragging = true;
+      dragStart = { x: event.clientX, y: event.clientY, yaw, pitch };
+      canvas.setPointerCapture(event.pointerId);
+    });
+
+    canvas.addEventListener('pointermove', (event) => {
+      if (!dragging) return;
+      yaw = dragStart.yaw + (event.clientX - dragStart.x) * 0.006;
+      pitch = Math.min(Math.PI * 0.48, Math.max(Math.PI * 0.12, dragStart.pitch + (event.clientY - dragStart.y) * 0.004));
+      tiltInput.value = Math.round(pitch * 180 / Math.PI);
+      updateTiltLabel();
+    });
+
+    canvas.addEventListener('pointerup', () => { dragging = false; });
+    canvas.addEventListener('pointercancel', () => { dragging = false; });
+
+    canvas.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      zoom = Math.min(1.7, Math.max(0.55, zoom - event.deltaY * 0.0007));
+    }, { passive: false });
+
+    const asteroidKey = document.createElement('span');
+    asteroidKey.className = 'planet-key';
+    asteroidKey.innerHTML = '<i style="color:#cbd5e1; background:repeating-radial-gradient(circle, #cbd5e1 0 1px, transparent 1px 3px)"></i>小行星带';
+    legend.appendChild(asteroidKey);
+
+    for (const planet of planets) {
+      const key = document.createElement('span');
+      key.className = 'planet-key';
+      key.innerHTML = `<i style="color:${planet.color}; background:${planet.color}"></i>${planet.name}`;
+      legend.appendChild(key);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    updateTiltLabel();
+    requestAnimationFrame(drawScene);
+  </script>
+</body>
+</html>

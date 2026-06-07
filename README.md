@@ -2,6 +2,8 @@
 
 # 学习任务
 
+> 新增：[太阳系 3D 模拟网页](index.html)
+
 - [x] [Markdown语法](#Markdown基本语法)
 - [x] [git使用](#git的使用)
 - [x] [vim](#vim)
